@@ -1,61 +1,55 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import pandas as pd
 import os
 
-def merge_data(csv_path, folder_path):
-    # Load the CSV data
-    model_data = pd.read_csv(csv_path)
-    
-    # Convert the 'Datetime' column to just date without time
-    model_data['Datetime'] = pd.to_datetime(model_data['Datetime']).dt.date
+# Step 1: Read the CSV file into a DataFrame
+csv_data = pd.read_csv('final_version_camx.csv')
 
-    # Placeholder list for Excel data
-    all_excel_data = []
+# Standardize the 'Date' column in the CSV data
+csv_data['Date'] = pd.to_datetime(csv_data['Date'], errors='coerce')
 
-    # Iterate over all Excel files in the given folder
-    for file in os.listdir(folder_path):
-        if file.endswith(".xlsx"):
-            xls_path = os.path.join(folder_path, file)
-            xls = pd.ExcelFile(xls_path)
+# Define the columns to keep from the CSV file
+csv_columns_to_keep = ['station_id', 'Date', 'site_latitude', 'site_longitude', 'NO3', 'SO4']
+
+# Filter the CSV data to keep only the required columns
+csv_data = csv_data[csv_columns_to_keep]
+
+# Step 2: Iterate over each Excel file
+merged_data = pd.DataFrame()  # Create an empty DataFrame to hold merged data
+
+excel_folder = '/Users/defne/Desktop/Current_data_subset'
+for file_name in os.listdir(excel_folder):
+    if file_name.endswith('.xlsx'):  # Check if the file is an Excel file
+        file_path = os.path.join(excel_folder, file_name)
+        
+        # Read each sheet in the Excel file
+        xls = pd.ExcelFile(file_path)
+        for sheet_name in xls.sheet_names:
+            # Step 3: Read the sheet into a DataFrame
+            sheet_data = xls.parse(sheet_name)
             
-            # Iterate over all sheets in the Excel file
-            for sheet_name in xls.sheet_names:
-                sheet_data = pd.read_excel(xls, sheet_name=sheet_name)
-                
-                # Extract the ID from the second row of the first column
-                sheet_data['ID'] = sheet_data.iloc[1,0]
-                
-                #print( sheet_data.iloc[1,0])
-                #break
-                
-                # Only append data if the required columns are present
-                if all(col in sheet_data.columns for col in ["Station Name", "SO42-", "NO3-", "Date"]):
-                    # Convert 'Date' column from 'dd.mm.yyyy' format to 'yyyy-mm-dd'
-                    sheet_data['Date'] = pd.to_datetime(sheet_data['Date'], format='%d.%m.%Y').dt.date
-                    all_excel_data.append(sheet_data)
+            # Step 4: Extract the ID (assuming it's in the first cell)
+            station_id = sheet_data.iloc[1, 0]
+            sheet_data['station_id'] = station_id  # Add the station_id column
 
-    # Concatenate all the sheets' data into one dataframe
-    measurements_data = pd.concat(all_excel_data, axis=0, ignore_index=True)
+            # Standardize the 'Date' column in the sheet data
+            sheet_data['Date'] = pd.to_datetime(sheet_data['Date'], errors='coerce')
 
-    # Merge the dataframes based on ID and Date
-    merged_data = pd.merge(model_data, measurements_data, left_on=['station_id', 'Datetime'], right_on=['ID', 'Date'], how='inner')
+            
+            required_columns = ['station_id', 'Date', 'NO3-', 'SO42-']
+            if not all(col in sheet_data.columns for col in required_columns):
+               
+                continue
 
-    # Select relevant columns
-    merged_data = merged_data[['Datetime', 'station_id','site_latitude','site_longitude', 'SO4', 'NO3', 'SO42-', 'NO3-']]
-    
-    # Save the merged dataframe to a new CSV
-    merged_data.to_csv('merged_output_FOUR.csv', index=False)
+            # Keep only the required columns
+            sheet_data = sheet_data[required_columns]
 
-    print("Data merged and saved to 'merged_output_FOUR.csv'.")
+            # Step 5: Merge the Excel data with the CSV data based on the common ID and Date
+            merged = pd.merge(csv_data, sheet_data, on=['station_id', 'Date'], how='inner')
+            
+            
+            merged_data = pd.concat([merged_data, merged], ignore_index=True)
 
-# Specify the path to the CSV and folder containing Excel files
-csv_path = '/Users/defne/Desktop/CAMx_Inorganic_extract_2019 2.csv'
-folder_path = '/Users/defne/Desktop/psi/Current_data_subset'
+# Reorder the columns as specified
+merged_data = merged_data[['station_id', 'Date', 'site_latitude', 'site_longitude', 'NO3', 'SO4', 'NO3-', 'SO42-']]
 
-merge_data(csv_path, folder_path)
-
+# Now 'merged_data' contains the combined data from all Excel sheets and the CSV file with the specified columns
